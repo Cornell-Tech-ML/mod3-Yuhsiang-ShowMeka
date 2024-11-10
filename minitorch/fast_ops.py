@@ -316,8 +316,45 @@ def tensor_reduce(
         reduce_dim: int,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        for i in prange(len(out)):
-            out[i] = fn(a_storage[i])
+
+        out_size = 1
+        for size in out_shape:
+            out_size *= size
+
+        out_index = np.array([0] * len(out_shape), np.int32)
+        a_index = np.array([0] * len(a_shape), np.int32)
+
+        for i in prange(out_size):
+            cur_i = i
+
+            # Get the index of the current position in the output tensor.
+            for j in range(len(out_shape), -1, -1):
+                out_index[j] = cur_i % out_shape[j]
+                cur_i = cur_i // out_shape[j]
+
+            # Initialize the reduced value.
+            reduced = fn(float("inf"), float("inf"))
+
+            
+            # Iterate through the reduce dimension.
+            for j in range(a_shape[reduce_dim]):
+                for k in range(len(a_shape)):
+                    if k == reduce_dim:
+                        a_index[k] = j
+                    else:
+                        a_index[k] = out_index[k]
+
+                a_pos = 0
+                for k in range(len(a_shape)):
+                    a_pos += a_index[k] * a_strides[k]
+
+                reduced = fn(reduced, a_storage[a_pos])
+
+            out_pos = 0
+            for k in range(len(out_shape)):
+                out_pos += out_index[k] * out_strides[k]
+
+            out[out_pos] = reduced
 
     return njit(_reduce, parallel=True)  # type: ignore
 
@@ -329,7 +366,7 @@ def _tensor_matrix_multiply(
     a_storage: Storage,
     a_shape: Shape,
     a_strides: Strides,
-    b_storage: Storage,
+    b_storagde: Storage,
     b_shape: Shape,
     b_strides: Strides,
 ) -> None:
