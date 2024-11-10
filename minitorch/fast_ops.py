@@ -179,10 +179,13 @@ def tensor_map(
 
         for i in prange(out_size):
             cur_i = i
+
+            # Get the index of the current position in the output tensor.
             for j in range(len(out_shape), -1, -1):
                 out_index[j] = cur_i % out_shape[j]
                 cur_i = cur_i // out_shape[j]
 
+            # Broadcast the index to the input tensor.
             for j in range(len(in_shape)):
                 if in_shape[j] == 1:
                     in_index[j] = 0
@@ -191,6 +194,8 @@ def tensor_map(
 
             in_position = 0
             out_position = 0
+
+            # go through the in shape because it might be broadcasted
             for j in range(len(in_shape)):
                 in_position += in_index[j] * in_strides[j]
                 out_position += out_index[j] * out_strides[j]
@@ -235,9 +240,47 @@ def tensor_zip(
         b_strides: Strides,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        for i in prange(len(out)):
-            out[i] = fn(a_storage[i], b_storage[i])
-        return out
+        
+        out_size = 1
+        for size in out_shape:
+            out_size *= size
+
+        out_index = np.array([0] * len(out_shape), np.int32)
+        a_index = np.array([0] * len(a_shape), np.int32)
+        b_index = np.array([0] * len(b_shape), np.int32)
+
+        for i in prange(out_size):
+            cur_i = i
+
+            # Get the index of the current position in the output tensor.
+            for j in range(len(out_shape), -1, -1):
+                out_index[j] = cur_i % out_shape[j]
+                cur_i = cur_i // out_shape[j]
+
+            # Broadcast the index to the input tensors.
+            for j in range(len(a_shape)):
+                if a_shape[j] == 1:
+                    a_index[j] = 0
+                else:
+                    a_index[j] = out_index[j]
+
+            for j in range(len(b_shape)):
+                if b_shape[j] == 1:
+                    b_index[j] = 0
+                else:
+                    b_index[j] = out_index[j]
+
+            a_position = 0
+            b_position = 0
+            out_position = 0
+
+
+            for j in range(len(a_shape)):
+                a_position += a_index[j] * a_strides[j]
+                b_position += b_index[j] * b_strides[j]
+                out_position += out_index[j] * out_strides[j]
+
+            out[out_position] = fn(a_storage[a_position], b_storage[b_position])
 
     return njit(_zip, parallel=True)  # type: ignore
 
