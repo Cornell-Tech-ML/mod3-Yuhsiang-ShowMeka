@@ -356,6 +356,13 @@ def tensor_reduce(
             to_index(out_pos, out_shape, out_index)
             o = index_to_position(out_index, out_strides)
 
+            # Each thread in a block processes one element of the input array
+            # We use shared memory (cache) to store intermediate results
+            # First, initialize cache with identity value
+            # Then, load input values into cache
+            # Finally, perform parallel reduction within the block
+            # The result is written to global memory by thread 0
+
             # Map to position in input array
             out_index[reduce_dim] = out_index[reduce_dim] * BLOCK_DIM + pos
             j = index_to_position(out_index, a_strides)
@@ -364,6 +371,11 @@ def tensor_reduce(
             if out_index[reduce_dim] < a_shape[reduce_dim]:
                 cache[pos] = a_storage[j]
             cuda.syncthreads()
+
+            # 1. Each thread loads one element from input array into shared memory cache
+            # 2. Synchronize threads to ensure all data is loaded
+            # 3. Perform parallel reduction within block using shared memory
+            # 4. Thread 0 writes final result back to global memory
 
             # Reduce within block
             if out_index[reduce_dim] < a_shape[reduce_dim]:
@@ -553,6 +565,7 @@ def _tensor_matrix_multiply(
 
         # Load data into shared memory with bounds checking
         if a_i < M and a_j < K:
+            # a_i = row, a_j = col
             a_index = batch * a_batch_stride + a_i * a_strides[-2] + a_j * a_strides[-1]
             a_shared[pi, pj] = a_storage[a_index]
 
@@ -560,6 +573,7 @@ def _tensor_matrix_multiply(
             a_shared[pi, pj] = 0.0
 
         if b_i < K and b_j < N:
+            # b_i = row, b_j = col
             b_index = batch * b_batch_stride + b_i * b_strides[-2] + b_j * b_strides[-1]
             b_shared[pi, pj] = b_storage[b_index]
 
