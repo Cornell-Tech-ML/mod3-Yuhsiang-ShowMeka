@@ -294,43 +294,62 @@ def tensor_reduce(
     ) -> None:
         # TODO: Implement for Task 3.1.
 
-        out_size = 1
-        for size in out_shape:
-            out_size *= size
+        # out_size = 1
+        # for size in out_shape:
+        #     out_size *= size
 
-        out_index = np.array([0] * len(out_shape), np.int32)
-        a_index = np.array([0] * len(a_shape), np.int32)
+        # out_index = np.array([0] * len(out_shape), np.int32)
+        # a_index = np.array([0] * len(a_shape), np.int32)
 
-        for i in prange(out_size):
-            cur_i = i
+        # for i in prange(out_size):
+        #     cur_i = i
 
-            # Get the index of the current position in the output tensor.
-            for j in range(len(out_shape), -1, -1):
-                out_index[j] = cur_i % out_shape[j]
-                cur_i = cur_i // out_shape[j]
+        #     # Get the index of the current position in the output tensor.
+        #     for j in range(len(out_shape), -1, -1):
+        #         out_index[j] = cur_i % out_shape[j]
+        #         cur_i = cur_i // out_shape[j]
 
-            # Initialize the reduced value.
-            reduced = fn(float("inf"), float("inf"))
+        #     # Initialize the reduced value.
+        #     reduced = fn(float("inf"), float("inf"))
 
-            # Iterate through the reduce dimension.
-            for j in range(a_shape[reduce_dim]):
-                for k in range(len(a_shape)):
-                    if k == reduce_dim:
-                        a_index[k] = j
-                    else:
-                        a_index[k] = out_index[k]
+        #     # Iterate through the reduce dimension.
+        #     for j in range(a_shape[reduce_dim]):
+        #         for k in range(len(a_shape)):
+        #             if k == reduce_dim:
+        #                 a_index[k] = j
+        #             else:
+        #                 a_index[k] = out_index[k]
 
-                a_pos = 0
-                for k in range(len(a_shape)):
-                    a_pos += a_index[k] * a_strides[k]
+        #         a_pos = 0
+        #         for k in range(len(a_shape)):
+        #             a_pos += a_index[k] * a_strides[k]
 
-                reduced = fn(reduced, a_storage[a_pos])
+        #         reduced = fn(reduced, a_storage[a_pos])
 
-            out_pos = 0
-            for k in range(len(out_shape)):
-                out_pos += out_index[k] * out_strides[k]
+        #     out_pos = 0
+        #     for k in range(len(out_shape)):
+        #         out_pos += out_index[k] * out_strides[k]
 
-            out[out_pos] = reduced
+        #     out[out_pos] = reduced
+
+        reduce_size = a_shape[reduce_dim]
+
+        for i in prange(len(out)):
+            out_index = np.array([0] * len(out_shape), np.int32)
+            to_index(i, out_shape, out_index)
+
+            out_pos = index_to_position(out_index, out_strides)
+
+            j = index_to_position(out_index, a_strides)
+            temp = out[out_pos]
+
+            # iterate through the reduce dimension
+            for s in range(reduce_size):
+                temp = fn(
+                    temp, float(a_storage[j + s * a_strides[reduce_dim]])
+                )  # temp = fn(temp, a_storage[j + s * a_strides[reduce_dim]])
+
+            out[out_pos] = temp
 
     return njit(_reduce, parallel=True)  # type: ignore
 
@@ -383,29 +402,30 @@ def _tensor_matrix_multiply(
 
     # TODO: Implement for Task 3.2.
     batch_size = out_shape[0]
-    M = out_shape[1]
-    N = out_shape[2]
-    K = a_shape[2]
+    M = out_shape[-2]
+    N = out_shape[-1]
+    K = a_shape[-1]
 
     for batch in prange(batch_size):
-        a_batch_offset = batch * a_batch_stride
-        b_batch_offset = batch * b_batch_stride
-        out_batch_offset = batch * out_strides[0]
+        for i in prange(M):
+            for j in prange(N):
+                sum = 0.0
+                for k in prange(K):
+                    a_pos = (
+                        batch * a_batch_stride + i * a_strides[-2] + k * a_strides[-1]
+                    )
 
-        for i in range(M):
-            a_row_offset = a_batch_offset + i * a_strides[1]
-            out_row_offset = out_batch_offset + i * out_strides[1]
+                    b_pos = (
+                        batch * b_batch_stride + k * b_strides[-2] + j * b_strides[-1]
+                    )
 
-            for j in range(N):
-                total = 0.0
+                    sum += a_storage[a_pos] * b_storage[b_pos]
 
-                for k in range(K):
-                    a_pos = a_row_offset + k * a_strides[2]
-                    b_pos = b_batch_offset + k * b_strides[2] + j * b_strides[1]
+                out_pos = (
+                    batch * out_strides[0] + i * out_strides[1] + j * out_strides[2]
+                )
 
-                    total += a_storage[a_pos] * b_storage[b_pos]
-
-                out[out_row_offset + j * out_strides[2]] = total
+                out[out_pos] = sum
 
 
 tensor_matrix_multiply = njit(_tensor_matrix_multiply, parallel=True)
