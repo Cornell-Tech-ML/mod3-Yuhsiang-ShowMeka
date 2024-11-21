@@ -278,12 +278,13 @@ def _sum_practice(out: Storage, a: Storage, size: int) -> None:
     cuda.syncthreads()
 
     if i < size:
-        o = 1
-        while o < BLOCK_DIM:
+        step = 1
+        while step < BLOCK_DIM:
             # Add the current position with the position offset by the stride
-            cache[pos] = cache[pos] + cache[pos + o]
+            if pos % (2 * step) == 0 and pos + step < BLOCK_DIM:
+                cache[pos] = cache[pos] + cache[pos + step]
             cuda.syncthreads()
-            o *= 2
+            step *= 2
 
         if pos == 0:
             out[block_i] = cache[0]
