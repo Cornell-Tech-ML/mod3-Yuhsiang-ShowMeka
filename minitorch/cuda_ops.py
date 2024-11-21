@@ -347,61 +347,35 @@ def tensor_reduce(
         out_pos = cuda.blockIdx.x
         pos = cuda.threadIdx.x
 
-        # TODO: Implement for Task 3.3.
-
-        # Initialize the cache with reduc_value
+        # Initialize cache with reduce_value
         cache[pos] = reduce_value
 
         if out_pos < out_size:
-            cur_i = out_pos
+            # Convert output position to index
+            to_index(out_pos, out_shape, out_index)
+            o = index_to_position(out_index, out_strides)
 
-            # Compute the number of dimensions
-            ndim = len(out_shape)
+            # Map to position in input array
+            out_index[reduce_dim] = out_index[reduce_dim] * BLOCK_DIM + pos
+            j = index_to_position(out_index, a_strides)
 
-            # Convert linear index i to multi-dimensional index out_index
-            for j in range(ndim - 1, -1, -1):
-                s = out_shape[j]
-                out_index[j] = cur_i % s
-                cur_i = cur_i // s
-
-            # Copy out_index to a_index and adjust for reduction dim
-            a_index = cuda.local.array(MAX_DIMS, numba.int32)
-            for j in range(ndim):
-                a_index[j] = out_index[j]
-            a_index[reduce_dim] = (
-                pos  # Each thread handles a different position along reduction dim
-            )
-
-            # Compute the input position
-            a_position = 0
-            for j in range(len(a_shape)):
-                a_position += a_index[j] * a_strides[j]
-
-            # Load data into shared memory if within bounds
-            if pos < a_shape[reduce_dim]:
-                cache[pos] = a_storage[a_position]
-
-            else:
-                cache[pos] = reduce_value  # Use reduce_value for out of bounds elements
-
+            # Load data into cache
+            if out_index[reduce_dim] < a_shape[reduce_dim]:
+                cache[pos] = a_storage[j]
             cuda.syncthreads()
 
-            # Reduction within the block
-            stride = BLOCK_DIM // 2
-            while stride > 0:
-                if pos < stride and (pos + stride) < a_shape[reduce_dim]:
-                    cache[pos] = fn(cache[pos], cache[pos + stride])
-                stride = stride // 2
-                cuda.syncthreads()
+            # Reduce within block
+            if out_index[reduce_dim] < a_shape[reduce_dim]:
+                step = 1
+                while step < BLOCK_DIM:
+                    if pos % (2 * step) == 0 and pos + step < BLOCK_DIM:
+                        cache[pos] = fn(cache[pos], cache[pos + step])
+                    cuda.syncthreads()
+                    step *= 2
 
-            # Compute the output position
-            out_position = 0
-            for j in range(ndim):
-                out_position += out_index[j] * out_strides[j]
-
-            # Write the result to global memory
+            # Write result
             if pos == 0:
-                out[out_position] = cache[0]
+                out[o] = cache[0]
 
     return jit(_reduce)  # type: ignore
 
@@ -451,26 +425,17 @@ def _mm_practice(out: Storage, a: Storage, b: Storage, size: int) -> None:
     i = cuda.blockIdx.x * BLOCK_DIM + tx
     j = cuda.blockIdx.y * BLOCK_DIM + ty
 
-    acc = 0.0  # Accumulator for the dot product
+    acc = 0  # Accumulator for the dot product
 
-    # Number of tiles
-    n_tiles = (size + BLOCK_DIM - 1) // BLOCK_DIM
-
-    for tile in range(n_tiles):
-        # Compute indices for a and b
-        a_i = i
-        a_j = tile * BLOCK_DIM + ty
-        b_i = tile * BLOCK_DIM + tx
-        b_j = j
-
+    for tile in range(0, size, BLOCK_DIM):
         # Load data into shared memory with bounds checking
-        if a_i < size and a_j < size:
-            a_shared[tx, ty] = a[a_i * size + a_j]
+        if i < size and (tile + ty) < size:
+            a_shared[tx, ty] = a[i * size + (tile + ty)]
         else:
             a_shared[tx, ty] = 0.0
 
-        if b_i < size and b_j < size:
-            b_shared[tx, ty] = b[b_i * size + b_j]
+        if j < size and (tile + tx) < size:
+            b_shared[tx, ty] = b[(tile + tx) * size + j]
         else:
             b_shared[tx, ty] = 0.0
 
