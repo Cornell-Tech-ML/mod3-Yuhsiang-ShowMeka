@@ -7,7 +7,6 @@ from numba import prange
 from numba import njit as _njit
 
 from .tensor_data import (
-    MAX_DIMS,
     broadcast_index,
     index_to_position,
     shape_broadcast,
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
     from typing import Callable, Optional
 
     from .tensor import Tensor
-    from .tensor_data import Index, Shape, Storage, Strides
+    from .tensor_data import Shape, Storage, Strides
 
 # TIP: Use `NUMBA_DISABLE_JIT=1 pytest tests/ -m task3_1` to run these tests without JIT.
 
@@ -30,6 +29,7 @@ Fn = TypeVar("Fn")
 
 
 def njit(fn: Fn, **kwargs: Any) -> Fn:
+    """Decorator to compile a function for Numba."""
     return _njit(inline="always", **kwargs)(fn)  # type: ignore
 
 
@@ -240,7 +240,7 @@ def tensor_zip(
         b_strides: Strides,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        
+
         out_size = 1
         for size in out_shape:
             out_size *= size
@@ -273,7 +273,6 @@ def tensor_zip(
             a_position = 0
             b_position = 0
             out_position = 0
-
 
             for j in range(len(a_shape)):
                 a_position += a_index[j] * a_strides[j]
@@ -335,7 +334,6 @@ def tensor_reduce(
             # Initialize the reduced value.
             reduced = fn(float("inf"), float("inf"))
 
-            
             # Iterate through the reduce dimension.
             for j in range(a_shape[reduce_dim]):
                 for k in range(len(a_shape)):
@@ -412,13 +410,11 @@ def _tensor_matrix_multiply(
     K = a_shape[2]
 
     for batch in prange(batch_size):
-
         a_batch_offset = batch * a_batch_stride
         b_batch_offset = batch * b_batch_stride
         out_batch_offset = batch * out_strides[0]
 
         for i in range(M):
-
             a_row_offset = a_batch_offset + i * a_strides[1]
             out_row_offset = out_batch_offset + i * out_strides[1]
 
@@ -426,7 +422,6 @@ def _tensor_matrix_multiply(
                 total = 0.0
 
                 for k in range(K):
-
                     a_pos = a_row_offset + k * a_strides[2]
                     b_pos = b_batch_offset + k * b_strides[2] + j * b_strides[1]
 
