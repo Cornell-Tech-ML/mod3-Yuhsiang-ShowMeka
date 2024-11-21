@@ -181,7 +181,7 @@ def tensor_map(
             cur_i = i
 
             # Get the index of the current position in the output tensor.
-            for j in range(len(out_shape), -1, -1):
+            for j in range(len(out_shape) - 1, -1, -1):
                 out_index[j] = cur_i % out_shape[j]
                 cur_i = cur_i // out_shape[j]
 
