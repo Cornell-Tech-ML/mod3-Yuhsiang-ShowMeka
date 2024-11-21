@@ -174,7 +174,36 @@ def tensor_map(
         in_index = cuda.local.array(MAX_DIMS, numba.int32)
         i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
         # TODO: Implement for Task 3.3.
-        raise NotImplementedError("Need to implement for Task 3.3")
+        
+        # Get the index of the current position in the output tensor.
+        if i < out_size:
+            cur_i = i
+
+            ndim = len(out_shape)
+
+            # Get the index of the current position in the input tensor.
+            for j in range(ndim - 1, -1, -1):
+                s = out_shape[j]
+                out_index[j] = cur_i % s
+                cur_i = cur_i // s
+
+            # Broadcast the index to the input tensor.
+            for j in range(ndim):
+                if in_shape[j] == 1:
+                    in_index[j] = 0
+                else:
+                    in_index[j] = out_index[j]
+
+            in_position = 0
+            out_position = 0
+
+            # Compute positions using strides
+            for j in range(ndim):
+                in_position += in_index[j] * in_strides[j]
+                out_position += out_index[j] * out_strides[j]
+
+            out[out_position] = fn(in_storage[in_position])
+
 
     return cuda.jit()(_map)  # type: ignore
 
