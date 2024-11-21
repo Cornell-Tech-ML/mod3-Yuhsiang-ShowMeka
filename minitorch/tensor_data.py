@@ -48,11 +48,9 @@ def index_to_position(index: Index, strides: Strides) -> int:
     """
     # TODO: Implement for Task 2.1.
     position = 0
-    if len(index) != len(strides):
-        raise IndexingError("Index and strides must have the same length")
-    for i, index in enumerate(index):
-        position += index * strides[i]
-    return position
+    for ind, stride in zip(index, strides):
+        position += ind * stride
+    return int(position)
 
 
 def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
@@ -69,11 +67,11 @@ def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
 
     """
     # TODO: Implement for Task 2.1.
-    if len(shape) != len(out_index):
-        raise IndexingError("Shape and out_index must have the same length")
-    for index, val in enumerate(shape):
-        out_index[index] = ordinal % val
-        ordinal = ordinal // val
+    cur_ord = ordinal + 0
+    for i in range(len(shape) - 1, -1, -1):
+        sh = shape[i]
+        out_index[i] = int(cur_ord % sh)
+        cur_ord = cur_ord // sh
 
 
 def broadcast_index(

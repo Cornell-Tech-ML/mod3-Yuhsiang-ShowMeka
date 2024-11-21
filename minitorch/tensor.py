@@ -333,11 +333,11 @@ class Tensor:
 
     def __radd__(self, b: TensorLike) -> Tensor:
         """Add two tensors"""
-        return Add.apply(self._ensure_tensor(b), self)
+        return self + b
 
     def __rmul__(self, b: TensorLike) -> Tensor:
         """Multiply two tensors"""
-        return Mul.apply(self._ensure_tensor(b), self)
+        return self * b
 
     def all(self, dim: Optional[int] = None) -> Tensor:
         """Return the all of the tensor"""
