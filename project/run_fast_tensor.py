@@ -30,8 +30,8 @@ class Network(minitorch.Module):
 
     def forward(self, x):
         # TODO: Implement for Task 3.5.
-        hidden = self.layer1.forward(x).relu()
-        end = self.layer2.forward(hidden).relu()
+        mid = self.layer1.forward(x).relu()
+        end = self.layer2.forward(mid).relu()
         return self.layer3.forward(end).sigmoid()
 
 

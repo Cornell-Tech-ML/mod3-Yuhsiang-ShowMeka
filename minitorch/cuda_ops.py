@@ -182,32 +182,11 @@ def tensor_map(
 
         # Get the index of the current position in the output tensor.
         if i < out_size:
-            cur_i = i
-
-            ndim = len(out_shape)
-
-            # Get the index of the current position in the input tensor.
-            for j in range(ndim - 1, -1, -1):
-                s = out_shape[j]
-                out_index[j] = cur_i % s
-                cur_i = cur_i // s
-
-            # Broadcast the index to the input tensor.
-            for j in range(ndim):
-                if in_shape[j] == 1:
-                    in_index[j] = 0
-                else:
-                    in_index[j] = out_index[j]
-
-            in_position = 0
-            out_position = 0
-
-            # Compute positions using strides
-            for j in range(ndim):
-                in_position += in_index[j] * in_strides[j]
-                out_position += out_index[j] * out_strides[j]
-
-            out[out_position] = fn(in_storage[in_position])
+            to_index(i, out_shape, out_index)
+            broadcast_index(out_index, out_shape, in_shape, in_index)
+            out_pos = index_to_position(out_index, out_strides)
+            in_pos = index_to_position(in_index, in_strides)
+            out[out_pos] = fn(in_storage[in_pos])
 
     return cuda.jit()(_map)  # type: ignore
 
@@ -251,39 +230,13 @@ def tensor_zip(
 
         # TODO: Implement for Task 3.3.
         if i < out_size:
-            cur_i = i
-
-            # Get the index of the current position in the output tensor.
-            ndim = len(out_shape)
-            for j in range(ndim - 1, -1, -1):
-                s = out_shape[j]
-                out_index[j] = cur_i % s
-                cur_i = cur_i // s
-
-            # Broadcast the index to the input tensor.
-            for j in range(ndim):
-                if a_shape[j] == 1:
-                    a_index[j] = 0
-                else:
-                    a_index[j] = out_index[j]
-
-            for j in range(ndim):
-                if b_shape[j] == 1:
-                    b_index[j] = 0
-                else:
-                    b_index[j] = out_index[j]
-
-            a_position = 0
-            b_position = 0
-            out_position = 0
-
-            # Compute positions using strides
-            for j in range(ndim):
-                a_position += a_index[j] * a_strides[j]
-                b_position += b_index[j] * b_strides[j]
-                out_position += out_index[j] * out_strides[j]
-
-            out[out_position] = fn(a_storage[a_position], b_storage[b_position])
+            to_index(i, out_shape, out_index)
+            out_pos = index_to_position(out_index, out_strides)
+            broadcast_index(out_index, out_shape, a_shape, a_index)
+            broadcast_index(out_index, out_shape, b_shape, b_index)
+            a_pos = index_to_position(a_index, a_strides)
+            b_pos = index_to_position(b_index, b_strides)
+            out[out_pos] = fn(a_storage[a_pos], b_storage[b_pos])
 
     return cuda.jit()(_zip)  # type: ignore
 
@@ -317,28 +270,23 @@ def _sum_practice(out: Storage, a: Storage, size: int) -> None:
 
     # TODO: Implement for Task 3.3.
 
-    # Load data into shared memory
+    block_i = cuda.blockIdx.x
+    cache[pos] = 0.0
     if i < size:
         cache[pos] = a[i]
 
-    else:
-        cache[pos] = 0.0
-
-    # Sync threads in the block
     cuda.syncthreads()
 
-    # Reduction within the block
-    stride = BLOCK_DIM // 2
-    while stride > 0:
-        if pos < stride:
-            cache[pos] = cache[pos] + cache[pos + stride]
-        stride = stride // 2
-        cuda.syncthreads()
-        stride = stride // 2
+    if i < size:
+        o = 1
+        while o < BLOCK_DIM:
+            # Add the current position with the position offset by the stride
+            cache[pos] = cache[pos] + cache[pos + o]
+            cuda.syncthreads()
+            o *= 2
 
-    # Write the result to global memory
-    if pos == 0:
-        out[cuda.blockIdx.x] = cache[0]
+        if pos == 0:
+            out[block_i] = cache[0]
 
 
 jit_sum_practice = cuda.jit()(_sum_practice)
